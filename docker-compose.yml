@@ -1,0 +1,135 @@
+version: "3.8"
+
+services:
+  # Auth Service Database
+  auth-db:
+    image: postgres:15-alpine
+    container_name: auth-service-db
+    environment:
+      POSTGRES_DB: ${AUTH_DB_NAME:-auth_db}
+      POSTGRES_USER: ${AUTH_DB_USER:-auth_user}
+      POSTGRES_PASSWORD: ${AUTH_DB_PASS:-auth_pass}
+    ports:
+      - "${AUTH_DB_PORT:-5433}:5432"
+    volumes:
+      - auth_db_data:/var/lib/postgresql/data
+    networks:
+      - auth-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${AUTH_DB_USER:-auth_user} -d ${AUTH_DB_NAME:-auth_db}",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Keycloak Database
+  keycloak-db:
+    image: postgres:15-alpine
+    container_name: auth-keycloak-db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak_user
+      POSTGRES_PASSWORD: keycloak_pass
+    volumes:
+      - keycloak_db_data:/var/lib/postgresql/data
+    networks:
+      - auth-network
+
+  # Keycloak Server
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0.3
+    container_name: auth-keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak
+      KC_DB_USERNAME: keycloak_user
+      KC_DB_PASSWORD: keycloak_pass
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HOSTNAME_STRICT_BACKCHANNEL: false
+      KC_HTTP_ENABLED: true
+      KC_HOSTNAME_STRICT: false
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: true
+      KC_METRICS_ENABLED: true
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    depends_on:
+      - keycloak-db
+    networks:
+      - auth-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/127.0.0.1/8080;echo -e 'GET /health/ready HTTP/1.1\r\nhost: http://localhost\r\nConnection: close\r\n\r\n' >&3;grep -q '200 OK' <&3",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 4
+      start_period: 90s
+
+  # Auth Service
+  auth-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: auth-service-app
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      AUTH_DB_HOST: auth-db
+      AUTH_DB_PORT: 5432
+      AUTH_DB_USER: ${AUTH_DB_USER:-auth_user}
+      AUTH_DB_PASS: ${AUTH_DB_PASS:-auth_pass}
+      AUTH_DB_NAME: ${AUTH_DB_NAME:-auth_db}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-vehicle-platform}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-auth-service}
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET:-your-client-secret}
+      JWT_SECRET: ${JWT_SECRET:-your-jwt-secret}
+    ports:
+      - "3001:3001"
+    depends_on:
+      - auth-db
+      - keycloak
+    networks:
+      - auth-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Keycloak Initialization Service
+  keycloak-init:
+    image: curlimages/curl:8.4.0
+    container_name: auth-keycloak-init
+    volumes:
+      - ./scripts/init-keycloak.sh:/init-keycloak.sh:ro
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    command: /bin/sh /init-keycloak.sh
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    networks:
+      - auth-network
+    restart: "no"
+
+volumes:
+  auth_db_data:
+  keycloak_db_data:
+
+networks:
+  auth-network:
+    driver: bridge
+    name: auth-service-network
