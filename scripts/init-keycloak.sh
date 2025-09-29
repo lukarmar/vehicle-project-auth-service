@@ -6,7 +6,7 @@
 KEYCLOAK_URL="http://keycloak:8080"
 ADMIN_USERNAME="admin"
 ADMIN_PASSWORD="admin123"
-ADMIN_EMAIL="admin@vehicleplatform.com"
+ADMIN_EMAIL="admin@vehicle-platform.com"
 REALM_NAME="vehicle-platform"
 
 echo "🔧 Inicializando configuração do Keycloak..."
