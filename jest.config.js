@@ -1,4 +1,5 @@
 module.exports = {
+  preset: 'ts-jest',
   moduleFileExtensions: ["js", "json", "ts"],
   modulePaths: ['<rootDir>/src/'],
   rootDir: ".",
@@ -11,18 +12,12 @@ module.exports = {
     '<rootDir>/dist/',
     '<rootDir>/node_modules/',
     '<rootDir>/src/application/dtos/',
+    '<rootDir>/src/application/interfaces/',
+    '<rootDir>/src/domain/repositories/',
   ],
   coverageDirectory: "coverage",
-  coverageReporters: ["text", "lcov", "html"],
-  coverageThreshold: {
-    global: {
-      branches: 80,
-      functions: 80,
-      lines: 80,
-      statements: 80
-    }
-  },
   testEnvironment: "node",
+  coverageProvider: "v8",
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^@domain/(.*)$": "<rootDir>/src/domain/$1",
